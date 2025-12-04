@@ -223,7 +223,11 @@ func listWallets(cmd *cobra.Command, args []string) {
 
 	// Print wallets
 	for _, wallet := range wallets {
-		printWallet(wallet, categoryColors, showBalances, showTxs)
+		var txs []*model.Tx
+		if showTxs {
+			txs = s.GetWalletTransactions(wallet.Name)
+		}
+		printWallet(wallet, categoryColors, showBalances, showTxs, txs)
 	}
 }
 
@@ -249,10 +253,11 @@ func showWallet(s *storage.Storage, name string) {
 	}
 
 	// Always show balances and transactions for a specific wallet
-	printWallet(wallet, categoryColors, true, true)
+	txs := s.GetWalletTransactions(wallet.Name)
+	printWallet(wallet, categoryColors, true, true, txs)
 }
 
-func printWallet(wallet *model.Wallet, categoryColors map[string]*color.Color, showBalances, showTxs bool) {
+func printWallet(wallet *model.Wallet, categoryColors map[string]*color.Color, showBalances, showTxs bool, txs []*model.Tx) {
 	// Format the wallet information
 	catPrefix := ""
 	if wallet.Category != "" {
@@ -325,9 +330,9 @@ func printWallet(wallet *model.Wallet, categoryColors map[string]*color.Color, s
 	}
 	
 	// Show transactions if requested
-	if showTxs && len(wallet.Txs) > 0 {
+	if showTxs && len(txs) > 0 {
 		fmt.Println("  Transactions:")
-		for _, tx := range wallet.Txs {
+		for _, tx := range txs {
 			txType := string(tx.Type)
 			details := ""
 			

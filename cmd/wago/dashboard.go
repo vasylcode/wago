@@ -108,9 +108,9 @@ func showDashboard(cmd *cobra.Command, args []string) {
 	}
 
 	// buildStatsDashboard creates the stats dashboard UI with month tabs
-	buildStatsDashboard := func(wallets []*model.Wallet, categories []*model.Category) *tview.Flex {
+	buildStatsDashboard := func(s *storage.Storage, wallets []*model.Wallet, categories []*model.Category) *tview.Flex {
 		// Collect all transactions
-		allTxs := collectAllTransactions(wallets)
+		allTxs := collectAllTransactions(s)
 		
 		// Group transactions by month
 		txsByMonth := groupTransactionsByMonth(allTxs)
@@ -199,7 +199,7 @@ func showDashboard(cmd *cobra.Command, args []string) {
 
 		switch currentView {
 		case ViewStats:
-			return buildStatsDashboard(wallets, categories)
+			return buildStatsDashboard(s, wallets, categories)
 		default:
 			return buildMainDashboard(wallets, categories)
 		}
@@ -682,19 +682,9 @@ func createFlowCanvas(txs []*model.Tx, wallets []*model.Wallet) *tview.TextView 
 	return view
 }
 
-// collectAllTransactions gathers all unique transactions from all wallets
-func collectAllTransactions(wallets []*model.Wallet) []*model.Tx {
-	var allTxs []*model.Tx
-	seenTxIDs := make(map[string]bool)
-
-	for _, wallet := range wallets {
-		for _, tx := range wallet.Txs {
-			if !seenTxIDs[tx.ID] {
-				seenTxIDs[tx.ID] = true
-				allTxs = append(allTxs, tx)
-			}
-		}
-	}
+// collectAllTransactions gathers all transactions from storage
+func collectAllTransactions(s *storage.Storage) []*model.Tx {
+	allTxs := s.ListTransactions()
 
 	// Sort by date (newest first)
 	sort.Slice(allTxs, func(i, j int) bool {

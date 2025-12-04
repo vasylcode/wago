@@ -4,6 +4,15 @@ import (
 	"time"
 )
 
+// Data represents the unified data structure stored in wago.json
+type Data struct {
+	Wallets      map[string]*Wallet   `json:"wallets"`
+	Categories   map[string]*Category `json:"categories"`
+	Contacts     map[string]*Contact  `json:"contacts"`
+	Transactions map[string]*Tx       `json:"transactions"`
+	Prices       map[string]float64   `json:"prices"`
+}
+
 // Wallet represents a crypto wallet
 type Wallet struct {
 	Name     string     `json:"name"`
@@ -13,7 +22,6 @@ type Wallet struct {
 	Type     string     `json:"type"`
 	Note     string     `json:"note,omitempty"`
 	Balances []*Balance `json:"balances,omitempty"`
-	Txs      []*Tx      `json:"txs,omitempty"`
 }
 
 // Balance represents a token balance in a wallet

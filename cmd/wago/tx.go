@@ -258,10 +258,9 @@ func deleteTransaction(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	walletName := args[0]
 	txID := args[1]
 
-	if err := s.DeleteTransaction(walletName, txID); err != nil {
+	if err := s.DeleteTransaction(txID); err != nil {
 		er(fmt.Sprintf("Failed to delete transaction: %v", err))
 		return
 	}
@@ -283,20 +282,13 @@ func listTransactions(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// Collect all transactions from all wallets, deduplicating by ID
-	// (transfers are stored in both source and destination wallets)
-	var allTxs []*model.Tx
-	seenTxIDs := make(map[string]bool)
-	walletMap := make(map[string]*model.Wallet)
+	// Get all transactions from storage
+	allTxs := s.ListTransactions()
 	
+	// Build wallet map for reference
+	walletMap := make(map[string]*model.Wallet)
 	for _, wallet := range wallets {
 		walletMap[wallet.Name] = wallet
-		for _, tx := range wallet.Txs {
-			if !seenTxIDs[tx.ID] {
-				seenTxIDs[tx.ID] = true
-				allTxs = append(allTxs, tx)
-			}
-		}
 	}
 
 	// Sort transactions by date (newest first)

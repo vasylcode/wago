@@ -13,9 +13,9 @@ var rootCmd = &cobra.Command{
 	Short: "Wago - A simple JSON-based wallet tracker",
 	Long: `Wago is a simple CLI tool for tracking cryptocurrency wallets, 
 their balances, and transactions across different blockchains.`,
-CompletionOptions: cobra.CompletionOptions{
-	DisableDefaultCmd: true,
-},
+	CompletionOptions: cobra.CompletionOptions{
+		DisableDefaultCmd: true,
+	},
 }
 
 // Execute executes the root command
