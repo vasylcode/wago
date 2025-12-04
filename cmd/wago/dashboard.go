@@ -100,7 +100,7 @@ func showDashboard(cmd *cobra.Command, args []string) {
 		footer := tview.NewTextView().
 			SetTextAlign(tview.AlignCenter).
 			SetDynamicColors(true).
-			SetText("[::b][#AAAAAA]Press [#FFFFFF]s[#AAAAAA] for stats | [#FFFFFF]r[#AAAAAA] reload | [#FFFFFF]q[#AAAAAA] quit")
+			SetText("[::b][#AAAAAA]Press [#FFFFFF]:[#AAAAAA] commands | [#FFFFFF]s[#AAAAAA] stats | [#FFFFFF]r[#AAAAAA] reload")
 		footer.SetBorder(false)
 		flex.AddItem(footer, 1, 0, false)
 
@@ -167,29 +167,34 @@ func showDashboard(cmd *cobra.Command, args []string) {
 		footer := tview.NewTextView().
 			SetTextAlign(tview.AlignCenter).
 			SetDynamicColors(true).
-			SetText("[::b][#AAAAAA]Press [#FFFFFF]←/→[#AAAAAA] switch month | [#FFFFFF]s[#AAAAAA] balances | [#FFFFFF]r[#AAAAAA] reload | [#FFFFFF]q[#AAAAAA] quit")
+			SetText("[::b][#AAAAAA]Press [#FFFFFF]:[#AAAAAA] commands | [#FFFFFF]←/→[#AAAAAA] month | [#FFFFFF]s[#AAAAAA] balances | [#FFFFFF]r[#AAAAAA] reload")
 		footer.SetBorder(false)
 		flex.AddItem(footer, 1, 0, false)
 
 		return flex
 	}
 
+	// Initialize storage once
+	s, err := storage.New()
+	if err != nil {
+		er(fmt.Sprintf("Failed to initialize storage: %v", err))
+		return
+	}
+
 	// buildDashboard creates the appropriate dashboard based on current view
 	buildDashboard := func() *tview.Flex {
-		s, err := storage.New()
-		if err != nil {
-			er(fmt.Sprintf("Failed to initialize storage: %v", err))
-			return nil
-		}
+		// Reload storage data
+		s, _ = storage.New()
 
 		// Get all wallets
 		wallets := s.ListWallets()
 		if len(wallets) == 0 {
-			// Return a simple message view
+			// Return a simple message view with help
 			flex := tview.NewFlex().SetDirection(tview.FlexRow)
 			msg := tview.NewTextView().
 				SetTextAlign(tview.AlignCenter).
-				SetText("No wallets found. Add wallets first.")
+				SetDynamicColors(true).
+				SetText("[yellow]No wallets found.[white]\n\nPress [yellow]:[white] and type:\n[green]add wallet <name> <address> <chain>[white]")
 			flex.AddItem(msg, 0, 1, false)
 			return flex
 		}
@@ -205,61 +210,186 @@ func showDashboard(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Build initial dashboard
-	flex := buildDashboard()
+	// Command palette
+	cmdPalette := NewCommandPalette(s)
+	
+	// Command input field
+	cmdInput := tview.NewInputField().
+		SetLabel(": ").
+		SetFieldWidth(0).
+		SetFieldBackgroundColor(tcell.ColorBlack).
+		SetLabelColor(tcell.ColorYellow)
+	
+	// Status message
+	statusMsg := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignLeft)
+	statusMsg.SetBackgroundColor(tcell.ColorBlack)
+	
+	// Command mode flag
+	cmdMode := false
+	
+	// Build the full UI with command palette
+	buildFullUI := func() *tview.Flex {
+		dashboard := buildDashboard()
+		if dashboard == nil {
+			return nil
+		}
+		
+		// Bottom bar with status and input
+		bottomBar := tview.NewFlex().SetDirection(tview.FlexColumn)
+		if cmdMode {
+			bottomBar.AddItem(cmdInput, 0, 1, true)
+		} else {
+			bottomBar.AddItem(statusMsg, 0, 1, false)
+		}
+		
+		// Main layout
+		main := tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(dashboard, 0, 1, !cmdMode).
+			AddItem(bottomBar, 1, 0, cmdMode)
+		
+		return main
+	}
+	
+	// Status message timeout
+	var statusTimeout *time.Timer
+	
+	// Update status message
+	setStatus := func(msg string, isError bool) {
+		if statusTimeout != nil {
+			statusTimeout.Stop()
+		}
+		if isError {
+			statusMsg.SetText("[red]" + msg + "[white]")
+		} else if msg != "" {
+			statusMsg.SetText("[green]" + msg + "[white]")
+			// Auto-clear success messages after 3 seconds
+			statusTimeout = time.AfterFunc(3*time.Second, func() {
+				app.QueueUpdateDraw(func() {
+					statusMsg.SetText("")
+				})
+			})
+		} else {
+			statusMsg.SetText("") // Empty by default
+		}
+	}
+	setStatus("", false)
+	
+	// Show help popup
+	showHelp := func(helpText string) {
+		modal := tview.NewModal().
+			SetText(helpText).
+			AddButtons([]string{"Close"}).
+			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+				app.SetRoot(buildFullUI(), true)
+			})
+		modal.SetBackgroundColor(tcell.ColorBlack)
+		
+		// Use a frame for better styling
+		frame := tview.NewFrame(modal).
+			SetBorders(1, 1, 1, 1, 1, 1)
+		frame.SetBackgroundColor(tcell.ColorBlack)
+		
+		app.SetRoot(frame, true)
+	}
+	
+	// Handle command input
+	cmdInput.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter {
+			input := cmdInput.GetText()
+			cmdInput.SetText("")
+			cmdMode = false
+			
+			if input != "" {
+				result := cmdPalette.Execute(input)
+				
+				// Handle quit
+				if result.Quit {
+					app.Stop()
+					return
+				}
+				
+				// Handle help popup
+				if result.IsHelp {
+					showHelp(result.HelpText)
+					return
+				}
+				
+				setStatus(result.Message, !result.Success)
+				
+				// Reload dashboard
+				statsState.Months = nil
+				app.SetRoot(buildFullUI(), true)
+			} else {
+				setStatus("", false)
+				app.SetRoot(buildFullUI(), true)
+			}
+		} else if key == tcell.KeyEscape {
+			cmdInput.SetText("")
+			cmdMode = false
+			setStatus("", false)
+			app.SetRoot(buildFullUI(), true)
+		}
+	})
+	
+	// Build initial UI
+	flex := buildFullUI()
 	if flex == nil {
 		return
 	}
 
 	// Set up keyboard shortcuts
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEscape || event.Rune() == 'q' {
-			app.Stop()
+		// In command mode, let input field handle everything
+		if cmdMode {
+			if event.Key() == tcell.KeyUp {
+				cmdInput.SetText(cmdPalette.GetHistory(-1))
+				return nil
+			}
+			if event.Key() == tcell.KeyDown {
+				cmdInput.SetText(cmdPalette.GetHistory(1))
+				return nil
+			}
+			return event
+		}
+		
+		// Normal mode shortcuts - only : to enter command mode
+		if event.Rune() == ':' {
+			cmdMode = true
+			setStatus("", false)
+			app.SetRoot(buildFullUI(), true)
+			app.SetFocus(cmdInput)
 			return nil
 		}
 		if event.Rune() == 'r' {
-			// Reload dashboard with fresh data
-			statsState.Months = nil // Reset months to reload
-			newFlex := buildDashboard()
-			if newFlex != nil {
-				app.SetRoot(newFlex, true)
-			}
+			statsState.Months = nil
+			setStatus("Reloaded", false)
+			app.SetRoot(buildFullUI(), true)
 			return nil
 		}
 		if event.Rune() == 's' {
-			// Toggle between main and stats view
 			if currentView == ViewMain {
 				currentView = ViewStats
 			} else {
 				currentView = ViewMain
 			}
-			newFlex := buildDashboard()
-			if newFlex != nil {
-				app.SetRoot(newFlex, true)
-			}
+			app.SetRoot(buildFullUI(), true)
 			return nil
 		}
 		// Arrow keys for month navigation in stats view
 		if currentView == ViewStats && len(statsState.Months) > 0 {
 			if event.Key() == tcell.KeyLeft {
-				// Go to newer month (lower index)
 				if statsState.CurrentMonth > 0 {
 					statsState.CurrentMonth--
-					newFlex := buildDashboard()
-					if newFlex != nil {
-						app.SetRoot(newFlex, true)
-					}
+					app.SetRoot(buildFullUI(), true)
 				}
 				return nil
 			}
 			if event.Key() == tcell.KeyRight {
-				// Go to older month (higher index)
 				if statsState.CurrentMonth < len(statsState.Months)-1 {
 					statsState.CurrentMonth++
-					newFlex := buildDashboard()
-					if newFlex != nil {
-						app.SetRoot(newFlex, true)
-					}
+					app.SetRoot(buildFullUI(), true)
 				}
 				return nil
 			}

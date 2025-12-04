@@ -12,9 +12,18 @@ var rootCmd = &cobra.Command{
 	Use:   "wago",
 	Short: "Wago - A simple JSON-based wallet tracker",
 	Long: `Wago is a simple CLI tool for tracking cryptocurrency wallets, 
-their balances, and transactions across different blockchains.`,
+their balances, and transactions across different blockchains.
+
+Run without arguments to open the dashboard.`,
 	CompletionOptions: cobra.CompletionOptions{
 		DisableDefaultCmd: true,
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		// Default to dashboard
+		dashboardCmd, _, _ := cmd.Find([]string{"dashboard"})
+		if dashboardCmd != nil {
+			dashboardCmd.Run(dashboardCmd, args)
+		}
 	},
 }
 
