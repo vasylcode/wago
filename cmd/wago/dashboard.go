@@ -60,7 +60,7 @@ func showDashboard(cmd *cobra.Command, args []string) {
 		header := tview.NewTextView().
 			SetTextAlign(tview.AlignCenter).
 			SetDynamicColors(true).
-			SetText("[::b][#00FFFF]WAGO DASHBOARD[white] [#666666]│[white] [#AAAAAA]Balances[white]")
+			SetText("[::b][#00FFFF]Wallet Aggregator[white] [#666666]│[white] [#FF6600]Balances[white]")
 		header.SetBorder(true)
 		flex.AddItem(header, 3, 0, false)
 
@@ -134,7 +134,7 @@ func showDashboard(cmd *cobra.Command, args []string) {
 		header := tview.NewTextView().
 			SetTextAlign(tview.AlignCenter).
 			SetDynamicColors(true).
-			SetText(fmt.Sprintf("[::b][#00FFFF]WAGO DASHBOARD[white] [#666666]│[white] [#FF6600]Stats & Flow[white]\n[#666666]◀[white] [::b]%s[:-] [#666666]▶[white]", currentMonthDisplay))
+			SetText(fmt.Sprintf("[::b][#00FFFF]Wallet Aggregator[white] [#666666]│[white] [#FF6600]Flow & Transactions[white]\n[#666666]◀[white] [::b]%s[:-] [#666666]▶[white]", currentMonthDisplay))
 		header.SetBorder(true)
 		flex.AddItem(header, 4, 0, false)
 
