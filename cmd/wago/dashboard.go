@@ -2,6 +2,7 @@ package wago
 
 import (
 	"fmt"
+	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -41,6 +42,11 @@ type StatsState struct {
 	CurrentMonth int      // index into Months
 }
 
+// MainDashboardState holds the state for the main dashboard
+type MainDashboardState struct {
+	SelectedWallet int
+}
+
 func showDashboard(cmd *cobra.Command, args []string) {
 	// Create a new tview application
 	app := tview.NewApplication()
@@ -50,9 +56,12 @@ func showDashboard(cmd *cobra.Command, args []string) {
 	
 	// Stats state
 	statsState := &StatsState{}
+	
+	// Main dashboard state
+	mainState := &MainDashboardState{SelectedWallet: 0}
 
 	// buildMainDashboard creates the main dashboard UI
-	buildMainDashboard := func(wallets []*model.Wallet, categories []*model.Category) *tview.Flex {
+	buildMainDashboard := func(s *storage.Storage, wallets []*model.Wallet, categories []*model.Category) *tview.Flex {
 		// Create a flex layout for the main container
 		flex := tview.NewFlex().SetDirection(tview.FlexRow)
 
@@ -64,43 +73,65 @@ func showDashboard(cmd *cobra.Command, args []string) {
 		header.SetBorder(true)
 		flex.AddItem(header, 3, 0, false)
 
-		// Create a flex for the main content area
-		contentFlex := tview.NewFlex().SetDirection(tview.FlexColumn)
+		// Sort wallets by name
+		sort.Slice(wallets, func(i, j int) bool {
+			return wallets[i].Name < wallets[j].Name
+		})
 
-		// Left panel: Total Balance by Coin and Wallet List
-		leftPanel := tview.NewFlex().SetDirection(tview.FlexRow)
+		// Ensure selected wallet is in bounds
+		if mainState.SelectedWallet >= len(wallets) {
+			mainState.SelectedWallet = 0
+		}
 
-		// Total Balance by Coin
+		// Get selected wallet
+		var selectedWallet *model.Wallet
+		if len(wallets) > 0 {
+			selectedWallet = wallets[mainState.SelectedWallet]
+		}
+
+		// TOP SECTION (80% height): Wallets | Balances | Transactions
+		topSection := tview.NewFlex().SetDirection(tview.FlexColumn)
+
+		// Wallets panel (30% width)
+		walletsView := createWalletsPanel(wallets, categories, mainState.SelectedWallet)
+		topSection.AddItem(walletsView, 0, 30, false)
+
+		// Balances panel (20% width)
+		balancesView := createWalletBalancesPanel(selectedWallet)
+		topSection.AddItem(balancesView, 0, 20, false)
+
+		// Transactions panel (50% width)
+		var walletTxs []*model.Tx
+		if selectedWallet != nil {
+			walletTxs = s.GetWalletTransactions(selectedWallet.Name)
+		}
+		txsView := createWalletTransactionsPanel(walletTxs)
+		topSection.AddItem(txsView, 0, 50, false)
+
+		// BOTTOM SECTION (20% height): Total Balance | Category Balance | Category Distribution
+		bottomSection := tview.NewFlex().SetDirection(tview.FlexColumn)
+
+		// Total Balance by Coin (larger)
 		totalBalanceView := createTotalBalanceView(wallets)
-		leftPanel.AddItem(totalBalanceView, 0, 1, false)
+		bottomSection.AddItem(totalBalanceView, 0, 2, false)
 
-		// Wallet List
-		walletListView := createWalletListView(wallets, categories)
-		leftPanel.AddItem(walletListView, 0, 2, false)
-
-		// Right panel: Balance by Category and Category Chart
-		rightPanel := tview.NewFlex().SetDirection(tview.FlexRow)
-
-		// Balance by Category
+		// Balance by Category (smaller, middle)
 		categoryBalanceView := createCategoryBalanceView(wallets, categories)
-		rightPanel.AddItem(categoryBalanceView, 0, 1, false)
+		bottomSection.AddItem(categoryBalanceView, 0, 1, false)
 
-		// Category Chart
+		// Category Distribution (larger)
 		categoryChartView := createCategoryChartView(wallets, categories)
-		rightPanel.AddItem(categoryChartView, 0, 1, false)
+		bottomSection.AddItem(categoryChartView, 0, 2, false)
 
-		// Add the panels to the content flex
-		contentFlex.AddItem(leftPanel, 0, 1, false)
-		contentFlex.AddItem(rightPanel, 0, 1, false)
-
-		// Add the content flex to the main flex
-		flex.AddItem(contentFlex, 0, 1, true)
+		// Add sections to main flex
+		flex.AddItem(topSection, 0, 4, false)    // 80%
+		flex.AddItem(bottomSection, 0, 1, false) // 20%
 
 		// Add a footer with instructions
 		footer := tview.NewTextView().
 			SetTextAlign(tview.AlignCenter).
 			SetDynamicColors(true).
-			SetText("[::b][#AAAAAA]Press [#FFFFFF]:[#AAAAAA] commands | [#FFFFFF]s[#AAAAAA] stats | [#FFFFFF]r[#AAAAAA] reload")
+			SetText("[::b][#AAAAAA]Press [#FFFFFF]:[#AAAAAA] commands | [#FFFFFF]↑↓[#AAAAAA] select wallet | [#FFFFFF]Enter[#AAAAAA] copy addr | [#FFFFFF]s[#AAAAAA] stats | [#FFFFFF]r[#AAAAAA] reload")
 		footer.SetBorder(false)
 		flex.AddItem(footer, 1, 0, false)
 
@@ -206,7 +237,7 @@ func showDashboard(cmd *cobra.Command, args []string) {
 		case ViewStats:
 			return buildStatsDashboard(s, wallets, categories)
 		default:
-			return buildMainDashboard(wallets, categories)
+			return buildMainDashboard(s, wallets, categories)
 		}
 	}
 
@@ -377,8 +408,9 @@ func showDashboard(cmd *cobra.Command, args []string) {
 			app.SetRoot(buildFullUI(), true)
 			return nil
 		}
-		// Arrow keys for month navigation in stats view
+		// Arrow keys for navigation
 		if currentView == ViewStats && len(statsState.Months) > 0 {
+			// Stats view: left/right for month navigation
 			if event.Key() == tcell.KeyLeft {
 				if statsState.CurrentMonth > 0 {
 					statsState.CurrentMonth--
@@ -390,6 +422,43 @@ func showDashboard(cmd *cobra.Command, args []string) {
 				if statsState.CurrentMonth < len(statsState.Months)-1 {
 					statsState.CurrentMonth++
 					app.SetRoot(buildFullUI(), true)
+				}
+				return nil
+			}
+		}
+		
+		// Main view: up/down for wallet selection
+		if currentView == ViewMain {
+			walletCount := len(s.ListWallets())
+			if event.Key() == tcell.KeyUp {
+				if mainState.SelectedWallet > 0 {
+					mainState.SelectedWallet--
+					app.SetRoot(buildFullUI(), true)
+				}
+				return nil
+			}
+			if event.Key() == tcell.KeyDown {
+				if mainState.SelectedWallet < walletCount-1 {
+					mainState.SelectedWallet++
+					app.SetRoot(buildFullUI(), true)
+				}
+				return nil
+			}
+			// Enter to copy wallet address
+			if event.Key() == tcell.KeyEnter {
+				wallets := s.ListWallets()
+				sort.Slice(wallets, func(i, j int) bool {
+					return wallets[i].Name < wallets[j].Name
+				})
+				if mainState.SelectedWallet < len(wallets) {
+					addr := wallets[mainState.SelectedWallet].Address
+					// Use pbcopy on macOS
+					copyCmd := exec.Command("pbcopy")
+					copyCmd.Stdin = strings.NewReader(addr)
+					if err := copyCmd.Run(); err == nil {
+						setStatus("Copied: "+addr, false)
+						app.SetRoot(buildFullUI(), true)
+					}
 				}
 				return nil
 			}
@@ -1073,6 +1142,272 @@ func createTransactionsView(txs []*model.Tx) *tview.TextView {
 			line += fmt.Sprintf("  [#666666]// %s[white]", tx.Note)
 		}
 		
+		content.WriteString(line + "\n")
+	}
+
+	view.SetText(content.String())
+	return view
+}
+
+// createWalletsPanel creates the wallets list panel with selection highlighting
+func createWalletsPanel(wallets []*model.Wallet, categories []*model.Category, selectedIdx int) *tview.TextView {
+	view := tview.NewTextView().
+		SetDynamicColors(true).
+		SetScrollable(true)
+
+	view.SetBorder(true).SetTitle(" Wallets ")
+
+	// Create a map of category name to color
+	categoryColors := make(map[string]string)
+	for _, cat := range categories {
+		colorName := cat.Color
+		if colorName == "" {
+			colorName = "white"
+		}
+		tviewColor := terminalColorToTviewColor(colorName)
+		categoryColors[cat.Name] = tviewColor
+	}
+
+	var content strings.Builder
+	for i, wallet := range wallets {
+		// Highlight selected wallet
+		prefix := "  "
+		if i == selectedIdx {
+			prefix = "[#FF6600]▶[white] "
+		}
+
+		// Get category color
+		catColor := categoryColors[wallet.Category]
+		if catColor == "" {
+			catColor = "#FFFFFF"
+		}
+
+		// Format: prefix name [cat] chain-type address (all one line)
+		content.WriteString(prefix)
+		if i == selectedIdx {
+			content.WriteString(fmt.Sprintf("[::b][#FFFFFF]%s[:-]", wallet.Name))
+		} else {
+			content.WriteString(fmt.Sprintf("[#AAAAAA]%s[white]", wallet.Name))
+		}
+		
+		if wallet.Category != "" {
+			content.WriteString(fmt.Sprintf(" [%s]■[white]", catColor))
+		}
+		
+		content.WriteString(fmt.Sprintf(" [#666666]%s-%s[white]", wallet.Chain, wallet.Type))
+		
+		// Show address on same line (truncated)
+		addr := wallet.Address
+		if len(addr) > 16 {
+			addr = addr[:8] + "..." + addr[len(addr)-6:]
+		}
+		content.WriteString(fmt.Sprintf(" [#888888]%s[white]\n", addr))
+		
+		// Show note on second line only for selected wallet
+		if i == selectedIdx && wallet.Note != "" {
+			content.WriteString(fmt.Sprintf("   [#666666]%s[white]\n", wallet.Note))
+		}
+	}
+
+	view.SetText(content.String())
+	return view
+}
+
+// createWalletBalancesPanel creates the balances panel for selected wallet
+func createWalletBalancesPanel(wallet *model.Wallet) *tview.TextView {
+	view := tview.NewTextView().
+		SetDynamicColors(true).
+		SetScrollable(true)
+
+	view.SetBorder(true).SetTitle(" Balances ")
+
+	if wallet == nil {
+		view.SetText("[#AAAAAA]No wallet selected[white]")
+		return view
+	}
+
+	if len(wallet.Balances) == 0 {
+		view.SetText("[#AAAAAA]No balances[white]")
+		return view
+	}
+
+	// Get coins for price fetching
+	coins := make([]string, 0, len(wallet.Balances))
+	for _, bal := range wallet.Balances {
+		if bal.Amount > 0 {
+			coins = append(coins, bal.Coin)
+		}
+	}
+	sort.Strings(coins)
+
+	prices, _ := util.GetCoinPrices(coins)
+
+	// Same format as Total Balance by Coin: COIN: amount (usd)
+	var content strings.Builder
+	for _, bal := range wallet.Balances {
+		if bal.Amount == 0 {
+			continue
+		}
+		if prices != nil {
+			if price, exists := prices[strings.ToLower(bal.Coin)]; exists {
+				usdValue := bal.Amount * price
+				content.WriteString(fmt.Sprintf("[::b]%s:[:-]  [#00FF00]%.2f[white] [#AAAAAA](%s)[white]\n",
+					bal.Coin, bal.Amount, util.FormatUSDValue(usdValue)))
+			} else {
+				content.WriteString(fmt.Sprintf("[::b]%s:[:-]  [#00FF00]%.2f[white]\n", bal.Coin, bal.Amount))
+			}
+		} else {
+			content.WriteString(fmt.Sprintf("[::b]%s:[:-]  [#00FF00]%.2f[white]\n", bal.Coin, bal.Amount))
+		}
+	}
+
+	view.SetText(content.String())
+	return view
+}
+
+// createWalletTransactionsPanel creates the transactions panel for selected wallet
+// Uses exact same format as createTransactionsView in Stats
+func createWalletTransactionsPanel(txs []*model.Tx) *tview.TextView {
+	view := tview.NewTextView().
+		SetDynamicColors(true).
+		SetScrollable(true)
+
+	view.SetBorder(true).SetTitle(" Transactions ")
+
+	if len(txs) == 0 {
+		view.SetText("[#AAAAAA]No transactions[white]")
+		return view
+	}
+
+	// Sort by date (newest first)
+	sortedTxs := make([]*model.Tx, len(txs))
+	copy(sortedTxs, txs)
+	sort.Slice(sortedTxs, func(i, j int) bool {
+		return sortedTxs[i].Date.After(sortedTxs[j].Date)
+	})
+
+	// Calculate max widths for alignment (same as createTransactionsView)
+	maxAmountLen := 0
+	maxCoinLen := 0
+	maxFromLen := 0
+	maxToLen := 0
+	maxSellAmountLen := 0
+	maxSellCoinLen := 0
+	maxBuyAmountLen := 0
+	maxBuyCoinLen := 0
+	maxSwapWalletLen := 0
+
+	for _, tx := range sortedTxs {
+		switch tx.Type {
+		case model.TxTypeDeposit, model.TxTypeWithdraw:
+			amountStr := fmt.Sprintf("%.2f", tx.Amount)
+			if len(amountStr) > maxAmountLen {
+				maxAmountLen = len(amountStr)
+			}
+			if len(tx.Coin) > maxCoinLen {
+				maxCoinLen = len(tx.Coin)
+			}
+			if len(tx.ToWallet) > maxToLen {
+				maxToLen = len(tx.ToWallet)
+			}
+			if len(tx.FromWallet) > maxFromLen {
+				maxFromLen = len(tx.FromWallet)
+			}
+		case model.TxTypeTransfer:
+			amountStr := fmt.Sprintf("%.2f", tx.Amount)
+			if len(amountStr) > maxAmountLen {
+				maxAmountLen = len(amountStr)
+			}
+			if len(tx.Coin) > maxCoinLen {
+				maxCoinLen = len(tx.Coin)
+			}
+			if len(tx.FromWallet) > maxFromLen {
+				maxFromLen = len(tx.FromWallet)
+			}
+			toWallet := tx.ToWallet
+			if toWallet == "" && tx.ToAddress != "" {
+				toWallet = tx.ToAddress
+				if len(toWallet) > 10 {
+					toWallet = toWallet[:6] + "..." + toWallet[len(toWallet)-4:]
+				}
+			}
+			if len(toWallet) > maxToLen {
+				maxToLen = len(toWallet)
+			}
+		case model.TxTypeSwap:
+			if len(tx.SwapWallet) > maxSwapWalletLen {
+				maxSwapWalletLen = len(tx.SwapWallet)
+			}
+			sellAmountStr := fmt.Sprintf("%.2f", tx.SellAmount)
+			if len(sellAmountStr) > maxSellAmountLen {
+				maxSellAmountLen = len(sellAmountStr)
+			}
+			if len(tx.SellCoin) > maxSellCoinLen {
+				maxSellCoinLen = len(tx.SellCoin)
+			}
+			buyAmountStr := fmt.Sprintf("%.2f", tx.BuyAmount)
+			if len(buyAmountStr) > maxBuyAmountLen {
+				maxBuyAmountLen = len(buyAmountStr)
+			}
+			if len(tx.BuyCoin) > maxBuyCoinLen {
+				maxBuyCoinLen = len(tx.BuyCoin)
+			}
+		}
+	}
+
+	var content strings.Builder
+
+	for _, tx := range sortedTxs {
+		dateStr := tx.Date.Format("Jan 02")
+
+		var typeIcon, typeColor, details string
+		switch tx.Type {
+		case model.TxTypeDeposit:
+			typeIcon = "▼"
+			typeColor = "#00FF00"
+			amountStr := fmt.Sprintf("%*.2f", maxAmountLen, tx.Amount)
+			coinStr := fmt.Sprintf("%-*s", maxCoinLen, tx.Coin)
+			toStr := fmt.Sprintf("%-*s", maxToLen, tx.ToWallet)
+			details = fmt.Sprintf("%s %s  →  %s", amountStr, coinStr, toStr)
+		case model.TxTypeWithdraw:
+			typeIcon = "▲"
+			typeColor = "#FF5555"
+			amountStr := fmt.Sprintf("%*.2f", maxAmountLen, tx.Amount)
+			coinStr := fmt.Sprintf("%-*s", maxCoinLen, tx.Coin)
+			fromStr := fmt.Sprintf("%-*s", maxFromLen, tx.FromWallet)
+			details = fmt.Sprintf("%s %s  ←  %s", amountStr, coinStr, fromStr)
+		case model.TxTypeTransfer:
+			typeIcon = "↔"
+			typeColor = "#FFFF00"
+			toWallet := tx.ToWallet
+			if toWallet == "" && tx.ToAddress != "" {
+				toWallet = tx.ToAddress
+				if len(toWallet) > 10 {
+					toWallet = toWallet[:6] + "..." + toWallet[len(toWallet)-4:]
+				}
+			}
+			amountStr := fmt.Sprintf("%*.2f", maxAmountLen, tx.Amount)
+			coinStr := fmt.Sprintf("%-*s", maxCoinLen, tx.Coin)
+			fromStr := fmt.Sprintf("%-*s", maxFromLen, tx.FromWallet)
+			toStr := fmt.Sprintf("%-*s", maxToLen, toWallet)
+			details = fmt.Sprintf("%s %s  %s  →  %s", amountStr, coinStr, fromStr, toStr)
+		case model.TxTypeSwap:
+			typeIcon = "⇄"
+			typeColor = "#FF00FF"
+			walletStr := fmt.Sprintf("%-*s", maxSwapWalletLen, tx.SwapWallet)
+			sellAmountStr := fmt.Sprintf("%*.2f", maxSellAmountLen, tx.SellAmount)
+			sellCoinStr := fmt.Sprintf("%-*s", maxSellCoinLen, tx.SellCoin)
+			buyAmountStr := fmt.Sprintf("%*.2f", maxBuyAmountLen, tx.BuyAmount)
+			buyCoinStr := fmt.Sprintf("%-*s", maxBuyCoinLen, tx.BuyCoin)
+			details = fmt.Sprintf("%s  %s %s  →  %s %s", walletStr, sellAmountStr, sellCoinStr, buyAmountStr, buyCoinStr)
+		}
+
+		line := fmt.Sprintf("[#666666]%s[white] [%s]%s[white] %s", dateStr, typeColor, typeIcon, details)
+
+		if tx.Note != "" {
+			line += fmt.Sprintf("  [#666666]// %s[white]", tx.Note)
+		}
+
 		content.WriteString(line + "\n")
 	}
 
