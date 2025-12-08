@@ -301,7 +301,7 @@ func (s *Storage) AddTransaction(tx *model.Tx) error {
 			s.updateBalance(fromWallet, tx.Coin, -tx.Amount)
 		}
 		if toWallet != nil {
-			s.updateBalance(toWallet, tx.Coin, tx.Amount)
+			s.updateBalance(toWallet, tx.Coin, tx.Amount-tx.Fee)
 		}
 
 	case model.TxTypeSwap:
@@ -344,7 +344,8 @@ func (s *Storage) DeleteTransaction(txID string) error {
 			s.updateBalance(wallet, tx.Coin, tx.Amount)
 		}
 		if wallet, err := s.GetWallet(tx.ToWallet); err == nil {
-			s.updateBalance(wallet, tx.Coin, -tx.Amount)
+			// Reverse: add back the received amount (which was amount minus fee)
+			s.updateBalance(wallet, tx.Coin, -(tx.Amount - tx.Fee))
 		}
 
 	case model.TxTypeSwap:

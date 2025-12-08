@@ -65,7 +65,6 @@ type Tx struct {
 	Coin        string    `json:"coin"`
 	Amount      float64   `json:"amount"`
 	Fee         float64   `json:"fee,omitempty"`
-	FeeCoin     string    `json:"fee_coin,omitempty"`
 	SwapWallet  string    `json:"swap_wallet,omitempty"`
 	SellCoin    string    `json:"sell_coin,omitempty"`
 	SellAmount  float64   `json:"sell_amount,omitempty"`

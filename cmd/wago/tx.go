@@ -19,7 +19,6 @@ var (
 	txAmount     float64
 	txNote       string
 	txFee        float64
-	txFeeCoin    string
 	txSwapWallet string
 	txSellCoin   string
 	txSellAmount float64
@@ -60,8 +59,7 @@ func init() {
 	addTxCmd.Flags().StringVarP(&txCoin, "coin", "c", "", "Coin/token symbol")
 	addTxCmd.Flags().Float64VarP(&txAmount, "amount", "a", 0, "Transaction amount")
 	addTxCmd.Flags().StringVarP(&txNote, "note", "n", "", "Transaction note")
-	addTxCmd.Flags().Float64VarP(&txFee, "fee", "F", 0, "Transaction fee amount")
-	addTxCmd.Flags().StringVarP(&txFeeCoin, "fee-coin", "C", "", "Fee coin (defaults to transaction coin if not specified)")
+	addTxCmd.Flags().Float64VarP(&txFee, "fee", "F", 0, "Transaction fee (deducted from received amount)")
 	addTxCmd.Flags().StringVarP(&txSellCoin, "sell-coin", "S", "", "Coin to sell (swap transactions)")
 	addTxCmd.Flags().Float64VarP(&txSellAmount, "sell-amount", "A", 0, "Amount to sell (swap transactions)")
 	addTxCmd.Flags().StringVarP(&txBuyCoin, "buy-coin", "B", "", "Coin to buy (swap transactions)")
@@ -212,16 +210,6 @@ func addTransaction(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Determine fee coin (default to transaction coin if not specified)
-	feeCoin := txFeeCoin
-	if txFee > 0 && feeCoin == "" {
-		if txCoin != "" {
-			feeCoin = txCoin
-		} else if txSellCoin != "" {
-			feeCoin = txSellCoin
-		}
-	}
-
 	// Create and add the transaction
 	tx := &model.Tx{
 		ID:          s.GenerateTxID(),
@@ -233,7 +221,6 @@ func addTransaction(cmd *cobra.Command, args []string) {
 		Coin:        txCoin,
 		Amount:      txAmount,
 		Fee:         txFee,
-		FeeCoin:     feeCoin,
 		SwapWallet:  txSwapWallet,
 		SellCoin:    txSellCoin,
 		SellAmount:  txSellAmount,
@@ -365,11 +352,7 @@ func listTransactions(cmd *cobra.Command, args []string) {
 		// Format fee if present
 		feeStr := ""
 		if tx.Fee > 0 {
-			feeCoin := tx.FeeCoin
-			if feeCoin == "" {
-				feeCoin = tx.Coin
-			}
-			feeStr = color.New(color.FgHiBlack).Sprintf(" [fee: %.2f %s]", tx.Fee, feeCoin)
+			feeStr = color.New(color.FgHiBlack).Sprintf(" [fee: %.2f %s]", tx.Fee, tx.Coin)
 		}
 
 		// Format note with color if present
