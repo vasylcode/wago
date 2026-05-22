@@ -50,13 +50,13 @@ type MainDashboardState struct {
 func showDashboard(cmd *cobra.Command, args []string) {
 	// Create a new tview application
 	app := tview.NewApplication()
-	
+
 	// Current view mode
 	currentView := ViewMain
-	
+
 	// Stats state
 	statsState := &StatsState{}
-	
+
 	// Main dashboard state
 	mainState := &MainDashboardState{SelectedWallet: 0}
 
@@ -145,10 +145,10 @@ func showDashboard(cmd *cobra.Command, args []string) {
 	buildStatsDashboard := func(s *storage.Storage, wallets []*model.Wallet, categories []*model.Category) *tview.Flex {
 		// Collect all transactions
 		allTxs := collectAllTransactions(s)
-		
+
 		// Group transactions by month
 		txsByMonth := groupTransactionsByMonth(allTxs)
-		
+
 		// Get sorted month keys (newest first)
 		if len(statsState.Months) == 0 || statsState.CurrentMonth >= len(txsByMonth) {
 			statsState.Months = getSortedMonthKeys(txsByMonth)
@@ -164,7 +164,7 @@ func showDashboard(cmd *cobra.Command, args []string) {
 			monthKey := statsState.Months[statsState.CurrentMonth]
 			currentMonthDisplay = formatMonthKey(monthKey)
 		}
-		
+
 		header := tview.NewTextView().
 			SetTextAlign(tview.AlignCenter).
 			SetDynamicColors(true).
@@ -188,11 +188,11 @@ func showDashboard(cmd *cobra.Command, args []string) {
 				SetText("[#AAAAAA]No transactions found[white]")
 			flowCanvas.SetBorder(true).SetTitle(" Flow ")
 		}
-		contentFlex.AddItem(flowCanvas, 0, 2, false)  // ~65% of width
+		contentFlex.AddItem(flowCanvas, 0, 2, false) // ~65% of width
 
 		// Transactions panel (right side, filtered by current month)
 		transactionsView := createTransactionsView(monthTxs)
-		contentFlex.AddItem(transactionsView, 0, 1, false)  // ~35% of width
+		contentFlex.AddItem(transactionsView, 0, 1, false) // ~35% of width
 
 		// Add the content flex to the main flex
 		flex.AddItem(contentFlex, 0, 1, true)
@@ -214,6 +214,7 @@ func showDashboard(cmd *cobra.Command, args []string) {
 		er(fmt.Sprintf("Failed to initialize storage: %v", err))
 		return
 	}
+	_ = util.UpdateCoinPrices(s, s.ListWallets())
 
 	// buildDashboard creates the appropriate dashboard based on current view
 	buildDashboard := func() *tview.Flex {
@@ -246,30 +247,30 @@ func showDashboard(cmd *cobra.Command, args []string) {
 
 	// Command palette
 	cmdPalette := NewCommandPalette(s)
-	
+
 	// Command input field
 	cmdInput := tview.NewInputField().
 		SetLabel(": ").
 		SetFieldWidth(0).
 		SetFieldBackgroundColor(tcell.ColorBlack).
 		SetLabelColor(tcell.ColorYellow)
-	
+
 	// Status message
 	statusMsg := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
 	statusMsg.SetBackgroundColor(tcell.ColorBlack)
-	
+
 	// Command mode flag
 	cmdMode := false
-	
+
 	// Build the full UI with command palette
 	buildFullUI := func() *tview.Flex {
 		dashboard := buildDashboard()
 		if dashboard == nil {
 			return nil
 		}
-		
+
 		// Bottom bar with status and input
 		bottomBar := tview.NewFlex().SetDirection(tview.FlexColumn)
 		if cmdMode {
@@ -277,18 +278,18 @@ func showDashboard(cmd *cobra.Command, args []string) {
 		} else {
 			bottomBar.AddItem(statusMsg, 0, 1, false)
 		}
-		
+
 		// Main layout
 		main := tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(dashboard, 0, 1, !cmdMode).
 			AddItem(bottomBar, 1, 0, cmdMode)
-		
+
 		return main
 	}
-	
+
 	// Status message timeout
 	var statusTimeout *time.Timer
-	
+
 	// Update status message
 	setStatus := func(msg string, isError bool) {
 		if statusTimeout != nil {
@@ -309,7 +310,7 @@ func showDashboard(cmd *cobra.Command, args []string) {
 		}
 	}
 	setStatus("", false)
-	
+
 	// Show help popup
 	showHelp := func(helpText string) {
 		modal := tview.NewModal().
@@ -319,39 +320,39 @@ func showDashboard(cmd *cobra.Command, args []string) {
 				app.SetRoot(buildFullUI(), true)
 			})
 		modal.SetBackgroundColor(tcell.ColorBlack)
-		
+
 		// Use a frame for better styling
 		frame := tview.NewFrame(modal).
 			SetBorders(1, 1, 1, 1, 1, 1)
 		frame.SetBackgroundColor(tcell.ColorBlack)
-		
+
 		app.SetRoot(frame, true)
 	}
-	
+
 	// Handle command input
 	cmdInput.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
 			input := cmdInput.GetText()
 			cmdInput.SetText("")
 			cmdMode = false
-			
+
 			if input != "" {
 				result := cmdPalette.Execute(input)
-				
+
 				// Handle quit
 				if result.Quit {
 					app.Stop()
 					return
 				}
-				
+
 				// Handle help popup
 				if result.IsHelp {
 					showHelp(result.HelpText)
 					return
 				}
-				
+
 				setStatus(result.Message, !result.Success)
-				
+
 				// Reload dashboard
 				statsState.Months = nil
 				app.SetRoot(buildFullUI(), true)
@@ -366,7 +367,7 @@ func showDashboard(cmd *cobra.Command, args []string) {
 			app.SetRoot(buildFullUI(), true)
 		}
 	})
-	
+
 	// Build initial UI
 	flex := buildFullUI()
 	if flex == nil {
@@ -387,7 +388,7 @@ func showDashboard(cmd *cobra.Command, args []string) {
 			}
 			return event
 		}
-		
+
 		// Normal mode shortcuts - only : to enter command mode
 		if event.Rune() == ':' {
 			cmdMode = true
@@ -429,7 +430,7 @@ func showDashboard(cmd *cobra.Command, args []string) {
 				return nil
 			}
 		}
-		
+
 		// Main view: up/down for wallet selection
 		if currentView == ViewMain {
 			walletCount := len(s.ListWallets())
@@ -517,13 +518,13 @@ type FlowNode struct {
 
 // FlowEdge represents an edge (transaction) between nodes
 type FlowEdge struct {
-	From      string
-	To        string
-	Coin      string
-	Amount    float64
-	Count     int
-	Dates     []time.Time
-	TxType    model.TxType
+	From   string
+	To     string
+	Coin   string
+	Amount float64
+	Count  int
+	Dates  []time.Time
+	TxType model.TxType
 	// For swaps
 	SellCoin   string
 	SellAmount float64
@@ -557,7 +558,7 @@ func createFlowCanvas(txs []*model.Tx, wallets []*model.Wallet) *tview.TextView 
 	edgeKey := func(from, to, coin string, txType model.TxType) string {
 		return fmt.Sprintf("%s|%s|%s|%s", from, to, coin, txType)
 	}
-	
+
 	edges := make(map[string]*FlowEdge)
 	swaps := []*FlowEdge{} // Keep swaps separate
 
@@ -714,7 +715,7 @@ func createFlowCanvas(txs []*model.Tx, wallets []*model.Wallet) *tview.TextView 
 	edgesBySource := make(map[string][]*FlowEdge)
 	sourceOrder := []string{} // Track order of sources
 	seenSources := make(map[string]bool)
-	
+
 	for _, edge := range allEdges {
 		if !seenSources[edge.From] {
 			seenSources[edge.From] = true
@@ -802,26 +803,26 @@ func createFlowCanvas(txs []*model.Tx, wallets []*model.Wallet) *tview.TextView 
 			// Format each part with padding
 			amountStr := fmt.Sprintf("%*.2f", maxAmountLen, edge.Amount)
 			coinStr := fmt.Sprintf("%-*s", maxCoinLen, edge.Coin)
-			
+
 			countStr := ""
 			if edge.Count > 1 {
 				countStr = fmt.Sprintf("(×%d)", edge.Count)
 			}
 			countPadded := fmt.Sprintf("%-*s", maxCountLen, countStr)
-			
+
 			targetName := plainTargetName(edge.To)
 			target := renderTargetNode(edge.To)
 			// Add padding after colored target name
 			if len(targetName) < maxTargetLen {
 				target = target + strings.Repeat(" ", maxTargetLen-len(targetName))
 			}
-			
+
 			dateLabel := formatDates(edge.Dates)
 
 			// Build the line: branch + amount + coin + count + arrow + target + date
 			// Arrow length adjusts based on count field usage
 			arrow := "──>"
-			
+
 			content.WriteString(fmt.Sprintf("    %s [%s]%s %s %s %s[white] %s   [#666666]%s[white]\n",
 				branch, arrowColor, amountStr, coinStr, countPadded, arrow, target, dateLabel))
 		}
@@ -831,7 +832,7 @@ func createFlowCanvas(txs []*model.Tx, wallets []*model.Wallet) *tview.TextView 
 	// Render swaps at the end with totals
 	if len(swaps) > 0 {
 		content.WriteString("[::b]Swaps:[:-]\n")
-		
+
 		// Group swaps by wallet+sellCoin+buyCoin for totals
 		type swapKey struct {
 			wallet   string
@@ -839,7 +840,7 @@ func createFlowCanvas(txs []*model.Tx, wallets []*model.Wallet) *tview.TextView 
 			buyCoin  string
 		}
 		swapGroups := make(map[swapKey][]*FlowEdge)
-		
+
 		for _, swap := range swaps {
 			key := swapKey{swap.From, swap.SellCoin, swap.BuyCoin}
 			swapGroups[key] = append(swapGroups[key], swap)
@@ -848,7 +849,7 @@ func createFlowCanvas(txs []*model.Tx, wallets []*model.Wallet) *tview.TextView 
 		for key, group := range swapGroups {
 			walletDisplay := fmt.Sprintf("[#00FFFF]%s[white]", key.wallet)
 			walletAddr := addrSnippet(key.wallet)
-			
+
 			// Calculate padding for total line to align with amounts
 			// The prefix is: "  " + wallet + " " + addr + "  "
 			walletPrefix := key.wallet
@@ -857,7 +858,7 @@ func createFlowCanvas(txs []*model.Tx, wallets []*model.Wallet) *tview.TextView 
 				addrPrefix = fmt.Sprintf("(%s...%s)", addr[:4], addr[len(addr)-4:])
 			}
 			prefixLen := 2 + len(walletPrefix) + 1 + len(addrPrefix) + 2
-			
+
 			// Render individual swaps
 			for _, swap := range group {
 				dateStr := fmt.Sprintf("[#666666]%s[white]", formatDates(swap.Dates))
@@ -867,7 +868,7 @@ func createFlowCanvas(txs []*model.Tx, wallets []*model.Wallet) *tview.TextView 
 					swap.BuyAmount, swap.BuyCoin,
 					dateStr))
 			}
-			
+
 			// Show total if 2+ swaps in this group
 			if len(group) >= 2 {
 				var totalSell, totalBuy float64
@@ -1142,12 +1143,12 @@ func createTransactionsView(txs []*model.Tx) *tview.TextView {
 		}
 
 		line := fmt.Sprintf("[#666666]%s[white] [%s]%s[white] %s", dateStr, typeColor, typeIcon, details)
-		
+
 		// Add note if present
 		if tx.Note != "" {
 			line += fmt.Sprintf("  [#666666]// %s[white]", tx.Note)
 		}
-		
+
 		content.WriteString(line + "\n")
 	}
 
@@ -1195,20 +1196,20 @@ func createWalletsPanel(wallets []*model.Wallet, categories []*model.Category, s
 		} else {
 			content.WriteString(fmt.Sprintf("[#AAAAAA]%s[white]", wallet.Name))
 		}
-		
+
 		if wallet.Category != "" {
 			content.WriteString(fmt.Sprintf(" [%s]■[white]", catColor))
 		}
-		
+
 		content.WriteString(fmt.Sprintf(" [#666666]%s-%s[white]", wallet.Chain, wallet.Type))
-		
+
 		// Show address on same line (truncated)
 		addr := wallet.Address
 		if len(addr) > 16 {
 			addr = addr[:8] + "..." + addr[len(addr)-6:]
 		}
 		content.WriteString(fmt.Sprintf(" [#888888]%s[white]\n", addr))
-		
+
 		// Show note on second line only for selected wallet
 		if i == selectedIdx && wallet.Note != "" {
 			content.WriteString(fmt.Sprintf("   [#666666]%s[white]\n", wallet.Note))
@@ -1482,15 +1483,15 @@ func createTotalBalanceView(wallets []*model.Wallet) *tview.TextView {
 		if price, exists := prices[strings.ToLower(coin)]; exists {
 			usdValue := balance * price
 			totalNetWorth += usdValue
-			
+
 			// Categorize as liquid or non-liquid
 			if stablecoins[strings.ToLower(coin)] {
 				liquidNetWorth += usdValue
 			} else {
 				nonLiquidNetWorth += usdValue
 			}
-			
-			content.WriteString(fmt.Sprintf("[::b]%s:[:-]  [#00FF00]%.2f[white] [#AAAAAA](%s)[white]\n", 
+
+			content.WriteString(fmt.Sprintf("[::b]%s:[:-]  [#00FF00]%.2f[white] [#AAAAAA](%s)[white]\n",
 				coin, balance, util.FormatUSDValue(usdValue)))
 		} else {
 			content.WriteString(fmt.Sprintf("[::b]%s:[:-]  [#00FF00]%.2f[white]\n", coin, balance))
@@ -1588,7 +1589,7 @@ func createWalletListView(wallets []*model.Wallet, categories []*model.Category)
 			if err == nil {
 				if price, exists := prices[strings.ToLower(coin)]; exists {
 					usdValue := balance * price
-					content.WriteString(fmt.Sprintf("  %s: [#00FF00]%.2f[white] [#AAAAAA](%s)[white]\n", 
+					content.WriteString(fmt.Sprintf("  %s: [#00FF00]%.2f[white] [#AAAAAA](%s)[white]\n",
 						coin, balance, util.FormatUSDValue(usdValue)))
 				} else {
 					content.WriteString(fmt.Sprintf("  %s: [#00FF00]%.2f[white]\n", coin, balance))
@@ -1711,7 +1712,7 @@ func createCategoryChartView(wallets []*model.Wallet, categories []*model.Catego
 	// Calculate balances by category and coin
 	balanceByCategoryAndCoin := make(map[string]map[string]float64)
 	allCoins := make(map[string]bool)
-	
+
 	for _, wallet := range wallets {
 		category := wallet.Category
 		if category == "" {
@@ -1753,7 +1754,7 @@ func createCategoryChartView(wallets []*model.Wallet, categories []*model.Catego
 				totalCoinBalance += amount
 			}
 		}
-		
+
 		if totalCoinBalance == 0 {
 			continue
 		}

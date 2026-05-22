@@ -122,6 +122,14 @@ func (s *Storage) SetPrice(coin string, price float64) error {
 	return s.save()
 }
 
+// SetPrices updates multiple coin prices in one save.
+func (s *Storage) SetPrices(prices map[string]float64) error {
+	for coin, price := range prices {
+		s.data.Prices[coin] = price
+	}
+	return s.save()
+}
+
 // AddWallet adds a new wallet
 func (s *Storage) AddWallet(wallet *model.Wallet) error {
 	if _, exists := s.data.Wallets[wallet.Name]; exists {
@@ -396,7 +404,7 @@ func (s *Storage) updateBalance(wallet *model.Wallet, coin string, amount float6
 	if wallet.Balances == nil {
 		wallet.Balances = []*model.Balance{}
 	}
-	
+
 	// Find existing balance for this coin
 	for _, balance := range wallet.Balances {
 		if balance.Coin == coin {
@@ -404,7 +412,7 @@ func (s *Storage) updateBalance(wallet *model.Wallet, coin string, amount float6
 			return
 		}
 	}
-	
+
 	// If no existing balance, create a new one
 	wallet.Balances = append(wallet.Balances, &model.Balance{
 		Coin:   coin,
