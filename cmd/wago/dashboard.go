@@ -73,8 +73,11 @@ func showDashboard(cmd *cobra.Command, args []string) {
 		header.SetBorder(true)
 		flex.AddItem(header, 3, 0, false)
 
-		// Sort wallets by name
+		// Sort wallets by category, then by name
 		sort.Slice(wallets, func(i, j int) bool {
+			if wallets[i].Category != wallets[j].Category {
+				return wallets[i].Category < wallets[j].Category
+			}
 			return wallets[i].Name < wallets[j].Name
 		})
 
@@ -448,6 +451,9 @@ func showDashboard(cmd *cobra.Command, args []string) {
 			if event.Key() == tcell.KeyEnter {
 				wallets := s.ListWallets()
 				sort.Slice(wallets, func(i, j int) bool {
+					if wallets[i].Category != wallets[j].Category {
+						return wallets[i].Category < wallets[j].Category
+					}
 					return wallets[i].Name < wallets[j].Name
 				})
 				if mainState.SelectedWallet < len(wallets) {
